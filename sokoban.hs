@@ -1,5 +1,7 @@
 module Sokoban where
 
+type Coord = (Int,Int)
+
 -- | Validates sokoban input including map and coordinates. Returns OK or the number of the line where an error was found.
 validate :: String -- ^ The path to the file containing the data to be parsed
          -> IO ()
@@ -26,8 +28,19 @@ parseLines lines index
             index
     | otherwise = index
     where
-        line = lines !! 0
+        line = lines !! index
+
+validateMapLine :: [String] -- ^ The array of lines being parsed
+                -> Int      -- ^ The number of lines already parsed
+                -> Bool     -- ^ True on success, False on error
+validateMapLine lines index
+
+
+
+
+
+
 
 -- | Validates a set of coordinates
-validateCoordinates :: String -- ^ A line of text to be validated
+validateCoordinateLine :: String -- ^ A line of text to be validated as a coordinate
                     -> Bool
