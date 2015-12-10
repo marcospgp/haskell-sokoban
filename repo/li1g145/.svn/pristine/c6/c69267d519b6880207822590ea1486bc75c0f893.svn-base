@@ -1,0 +1,193 @@
+module Main where
+
+import qualified Data.Text as T
+import Data.List.Split
+import Data.Char
+
+-- /Guidelines Mooshak
+
+inStr :: String -> [String]
+inStr [] = []
+inStr ['\n'] = [[],[]]
+inStr (x:xs) = case x of
+    '\n' -> []:inStr xs
+    otherwise -> case inStr xs of
+        y:ys -> (x:y):ys
+        [] -> [[x]]
+
+outStr :: [String] -> String
+outStr [] = "\n"
+outStr t = unlines (map (T.unpack . T.stripEnd . T.pack) t)
+
+-- Guidelines Mooshak/
+
+{- 
+(1) Relativamente à simplificação do mapa:
+    Seja x um elemento qualquer:
+     Se na área de 1 unidade à sua volta não houver um único membro não-cardinal (ponto ou espaço), este é removido
+     Caso contrário, ou seja, pelo menos um carater não-cardinal no raio de 1 unidade, este mantém-se.
+     Primeiro de tudo há o problema de que, verificando as listas recursivamente, não é possível ver qual o valor atrás
+     do membro atual. Como tal foram criadas duas funções. Uma que verifica normalmente e dá um valor 'B' ou 'V', dependendo
+     dos parámetros, e outra que dá o valor final, revendo as linhas em sentido contrário, e a linha final é revertida uma última vez.
+     Finalmente, é necessário tratar do caso especial da primeira e última linha, como tal é necessário
+    apenas verificar a linha de baixo no caso da primeira, e de cima no caso da segunda. Como tal foi criada
+    uma função que verifica apenas uma, e esta é aplicada na linha 1, e a mesma função em ordem contrária é aplicada
+    na linha final. No caso de qualquer outras linhas (chamadas de torso ao longo deste código), verifica-se as linhas
+    de cima e de baixo.
+(2) Relativamente às coordenadas:
+	Foi dividida a lista em head (coordenadas da personagem) e tail (coordenadas da caixa) e feitas as devidas funções.
+	Como a coordenada (0,0) fazia respeito ao canto inferior esquerdo do mapa, decidi trabalhar com o reverse do mapa dado
+	e reverter a lista final.
+	Finalmente foi necessário colocar as coordenadas dadas no formato de listas de String, e passa-los para pares coordenados
+	(Int,Int) com as devidas funções auxiliares, e importando <Data.List.Split>.
+-}
+
+
+main = do 
+    inp <- getContents
+    putStr (outStr (tarefa2 (inStr inp)))
+
+          
+
+tarefa2 :: [String] -> [String]
+tarefa2 inp = mapa_final
+
+    where    
+--    ficheiro = inp -- divisão do ficheiro em linhas
+    estrutura_mapa = take (numero_linhas '#' inp) inp -- divisao de apenas o mapa em linhas              
+    coordenadas = reverse ( take ( numero_coordenadas (inp) ) (reverse inp) ) -- divisao de apenas as coordenadas em linhas
+    coordenadas_jogador = head coordenadas
+    coordenadas_caixas = tail coordenadas
+    linha1_unprocessed = confere_lista ((!!) estrutura_mapa 0) ((!!) estrutura_mapa 1)
+    linha1 = reverse (rever_lista (reverse (linha1_unprocessed)) (reverse(((!!) estrutura_mapa 1))))
+    linhaz_unprocessed = confere_lista (last (estrutura_mapa)) ((!!) estrutura_mapa ((length (estrutura_mapa)-2)))
+    linhaz = reverse (rever_lista (reverse (linhaz_unprocessed)) (reverse (((!!) estrutura_mapa ((length (estrutura_mapa)-2))))))
+    linhas_torso_unprocessed = map reverse(map confere_lista_torso (divide_lista_torso estrutura_mapa))
+    linhas_torso_aplicavel = troca_segundo_lista (linhas_torso_unprocessed) ((reverse_lista (divide_lista_torso (estrutura_mapa))))
+    linhas_torso = map reverse (map rever_lista_torso (linhas_torso_aplicavel))
+    linhas_mapa_coordenadas = reverse estrutura_mapa
+    mapa_simplificado = linha1 : (linhas_torso ++ [linhaz])
+    mapa_heroi = let n = (string_list coordenadas_jogador) 
+                            in reverse (insere_personagem_linha ((read((!!) n 1)),(read((!!) n 0))) (reverse mapa_simplificado) )
+    mapa_final = let x = map (splitOn [' ']) (coordenadas_caixas)
+                            in reverse (insere_todas_caixas (parifica x) (reverse mapa_heroi))                        
+
+
+
+
+-- /Funções auxiliares para o tratamento do ficheiro
+-- Relativas ao mapa
+numero_linhas :: Char -> [String] -> Int -- Dá o número de linhas que contém apenas o mapa
+numero_linhas a [] = 0
+numero_linhas a (x:xs)
+    | a == (head x) = 1 + numero_linhas a xs
+    | otherwise = 0
+numero_coordenadas :: [String] -> Int -- Dá o número de linhas que contém apenas as coordenadas
+numero_coordenadas [] = 0
+numero_coordenadas (x:xs)
+    | isDigit (head x) == True = 1 + numero_coordenadas xs
+    | otherwise = numero_coordenadas xs
+divide_lista_torso :: [String] -> [[String]] -- Divide o mapa numa lista de listas com 3 membros cada, para faciliar a função <confere_lista>
+divide_lista_torso [] = []
+divide_lista_torso [x] = []
+divide_lista_torso [x,y,z] = [[x,y,z]]
+divide_lista_torso (x:x1:x2:xs) =[x,x1,x2] : divide_lista_torso (x1:x2:xs)
+troca_segundo_lista :: [[a]] -> [[[a]]] -> [[[a]]] -- Coloca todos os elementos da lista a1 e troca-os com todo o 2º elemento de conjunto de listas de a2
+troca_segundo_lista [] [] = []
+troca_segundo_lista (x:xs) ((y:ys:yz):z) = (y:x:yz) : troca_segundo_lista xs z
+reverse_lista :: [[[a]]] -> [[[a]]]
+reverse_lista [] = []
+reverse_lista ((x:xs):y) = ( map reverse (x:xs) ) : reverse_lista y
+-- Relativas ao mapa/
+-- Relativas às coordenadas
+min_coordenadas :: Ord a => Ord b => (a,b) -> (a,b) -> (a,b)
+min_coordenadas (x,xs) (y,ys)
+    | x < y = (x,xs)
+    | x > y = (y,ys)
+    | x == y = if xs > ys then (y,ys) else (x,xs)
+minimum_coordenadas :: Ord a => Ord b => [(a,b)] -> (a,b)
+minimum_coordenadas [(x,y)] = (x,y)
+minimum_coordenadas (x:y) = min_coordenadas x (minimum_coordenadas y)
+delete' :: Eq a => a -> [a] -> [a]
+delete' _ [] = []
+delete' n (x:xs)
+    | n == x = xs
+    | otherwise = x : delete' n xs
+string_list :: String -> [String]
+string_list [] = []
+string_list (x:xs) = splitOn [' '] (x:xs)
+parifica :: [[String]] -> [(Int,Int)]
+parifica [] = []
+parifica ((x:xs):ys) = (read x,read(head xs)) : parifica ys
+-- Relativamente às coordenadas/
+-- Fim das funções auxiliares/
+-- /Funções relativas à construção do mapa
+confere_lista :: String -> String -> String -- Aplicável apenas à primeira e última linha do mapa, por serem casos especiais
+confere_lista [] [] = []
+confere_lista [a] [b] = "V" -- V = "Veremos o seu valor na próxima função"(função que re-vê as linhas do ângulo contrário)
+confere_lista (x:xs) (y:ys)
+    | or [y == ' ',head ys == ' '] = 'B' : confere_lista xs ys -- B = "Bom". Ou seja, o seu valor será automaticamente '#' na função de revisão
+    | and [x == '#',y == '#', head ys == '#'] = 'V' : confere_lista xs ys
+    | otherwise = 'V' : confere_lista (xs) (ys)
+rever_lista :: String -> String -> String -- Função que re-vê as linhas pelo lado contrário, apartir dos valores 'B' e 'V' atribuidos
+rever_lista [] [] = []
+rever_lista [a] [b] = case a of 'B' -> "#"
+                                'V' -> if b == '#' then " "
+                                          else " "        
+rever_lista (x:xs) (y:ys) = case x of 'B' -> '#' : rever_lista xs ys
+                                      'V' -> if (or [y /= '#', head ys /= '#']) then '#' : rever_lista xs ys
+                                             else ' ' : rever_lista xs ys
+confere_lista_torso :: [String] -> String -- Mesmo processo para as linhas intermédias do mapa, neste caso a função verifica as linhas em cima e em baixo da linha aplicada
+confere_lista_torso [] = []
+confere_lista_torso [[x],[y],[z]]
+    | and [x == y, y == z] = "V"
+    | otherwise = "V"
+confere_lista_torso [(x:xs),(y:ys),(z:zs)] = case y of '#' -> if or ([x == ' ', head xs == ' ', z == ' ', head zs == ' ', head ys == ' ',x == '.', head xs == '.', z == '.', head zs == '.', head ys == '.'])
+                                                                then 'B' : confere_lista_torso [xs,ys,zs]
+                                                                else 'V' : confere_lista_torso [xs,ys,zs]
+                                                       ' ' -> ' ' : confere_lista_torso [xs,ys,zs]
+                                                       '.' -> '.' : confere_lista_torso [xs,ys,zs]
+rever_lista_torso :: [String] -> String -- Mesmo sistema a função rever_lista, mas neste caso é necessário verificar o dobro das linhas
+rever_lista_torso [] = []
+rever_lista_torso [[x],[y],[z]] = case y of 'B' -> "#"
+                                            ' ' -> " "
+                                            '.' -> "."
+                                            'V' -> if and ([x == y, y ==z]) then "#"
+                                                   else " "
+rever_lista_torso [(x:xs),(y:ys),(z:zs)] = case y of 'B' -> '#' : rever_lista_torso [xs,ys,zs]
+                                                     'V' -> if or ([x == ' ', head xs == ' ', z == ' ', head zs == ' ', head ys == ' ',x == '.', head xs == '.', z == '.', head zs == '.', head ys == '.'])
+                                                                then '#' : rever_lista_torso [xs,ys,zs]
+                                                                else ' ' : rever_lista_torso [xs,ys,zs]
+                                                     ' ' -> ' ' : rever_lista_torso [xs,ys,zs]
+                                                     '.' -> '.' : rever_lista_torso [xs,ys,zs]
+-- Funções relativas à contrução do mapa/
+-- Funções relativas ao inserir de coordenadas
+ordenar_coordenadas :: Ord a => Ord b => [(a,b)] -> [(a,b)]
+ordenar_coordenadas [] = []
+ordenar_coordenadas ((x,xs):ys) = let n = ((x,xs):ys) in if (x,xs) == minimum_coordenadas n 
+                                                         then (x,xs) : ordenar_coordenadas ys
+                                                         else (minimum_coordenadas n) : ordenar_coordenadas (delete' (minimum_coordenadas n) n) 
+insere_personagem_linha :: (Int,Int) -> [[Char]] -> [[Char]]
+insere_personagem_linha (_,_) [] = []
+insere_personagem_linha (0,b) ((x:xs):y) = (insere_personagem_coluna (x:xs) b ) : y 
+insere_personagem_linha (a,b) ((x:xs):y) = (x:xs) : (insere_personagem_linha ((a-1),b) y)
+insere_personagem_coluna :: [Char] -> Int -> [Char]
+insere_personagem_coluna [] _ = []
+insere_personagem_coluna (x:xs) 0 = 'o' : xs
+insere_personagem_coluna (x:xs) n = x : ( insere_personagem_coluna xs (n-1) )
+insere_caixa_linha :: (Int,Int) -> [[Char]] -> [[Char]]
+insere_caixa_linha _ [] = []
+insere_caixa_linha (0,b) (x:xs) = (insere_caixa_coluna x b) : xs
+insere_caixa_linha (a,b) (x:xs) = x : (insere_caixa_linha ((a-1),b) xs)
+insere_caixa_coluna :: [Char] -> Int -> [Char]
+insere_caixa_coluna [] _  = []
+insere_caixa_coluna (x:xs) 0
+    | x == ' ' = 'H' : xs
+    | x == '.' = 'I' : xs
+    | otherwise = '#' : xs
+insere_caixa_coluna (x:xs) n = x : insere_caixa_coluna xs (n-1)
+insere_todas_caixas :: [(Int,Int)] -> [String] -> [String]
+insere_todas_caixas [] _ = []
+insere_todas_caixas [(x,xs)] (y:ys) = insere_caixa_linha (x,xs) (y:ys)
+insere_todas_caixas ((x,xs):z) (y:ys) = insere_todas_caixas z (insere_caixa_linha (x,xs) (y:ys))
+-- Funções relativas ao inserir de coordenadas 

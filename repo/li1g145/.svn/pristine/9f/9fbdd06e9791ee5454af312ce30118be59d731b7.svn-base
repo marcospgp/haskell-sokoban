@@ -1,0 +1,7 @@
+ Como sabem, a biblioteca Gloss faz uso de um "objeto" que contém o estado do jogo e é passado à maior parte das funções que o controlam.
+
+ O que nós fizemos neste passo foi deixar de ter as sprites na função que desenha o jogo e passar a ter spritesheets, que são conjuntos de sprites com uma sequência (que formam uma animação) no tal objeto que contém o estado do jogo.
+
+ Para organizar essas spritesheets, e de modo a fazer a coisa funcionar, criamos um tipo de variável chamado gameObject, que contém as spritesheets (listas de sprites) relativas a um objeto do jogo, assim como informação quanto à animação que está a ser mostrada (que pode ser nenhuma) e quantas sprites dessa animação já percorremos. Também é lá mantida informação sobre quantas frames deve durar cada sprite da animação (e claro, quantas frames já foram passadas com essa sprite).
+
+ Isto, no entanto, levou-nos a outro problema. O movimento do jogador e das caixas (ou seja, dos gameObjects) estava a ser processado numa única frame. Ao mesmo tempo, tínhamos animações que duravam várias frames para esses movimentos. A solução foi adicionar ao tipo gameObject informação quanto à direção em que se estava a mover, e a velocidade a que se movia, de maneira a transformar o próprio movimento numa espécie de animação.

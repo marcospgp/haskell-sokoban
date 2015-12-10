@@ -1,0 +1,26 @@
+import Data.List
+import System.Directory
+
+e2eTarefa4 :: IO ()
+e2eTarefa4 = do
+    files <- getDirectoryContents "./"
+    let inputs = map ("./" ++) $ filter (isSuffixOf ".in") files
+    mapM_ (correTeste tarefa4) inputs
+
+correTeste :: ([String] −> [String]) −> String −> IO ()
+correTeste tarefa input = do
+    -- nome do ficheiro
+    let nome = reverse $ drop 3 $ reverseinput
+    -- texto do mapa
+    inp <- readFileinput
+    -- resultado da tarefa
+    let o = outStr (tarefa (inStrinp))
+    -- resultado esperado
+    esp <- readFile (nome ++ ".out")
+    putStr ("[" ++ nome ++ "]:")
+    if (o == esp) -- compararesultados
+    then putStrLn "OK"
+    else do
+        putStrLn "FALHOU"
+        putStr esp
+        putStrLn o

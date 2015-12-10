@@ -1,0 +1,78 @@
+module Sokoban where
+
+import Data.Char
+import Data.List
+
+type Coord = (Int,Int)
+
+-- | Validates sokoban input including map and coordinates. Returns OK or the number of the line where an error was found.
+validate :: String -- ^ The path to the file containing the data to be parsed
+         -> IO ()
+validate path = do
+    content <- readFile path -- Read the input file
+    let fileLines = lines content
+    let result = parseLines fileLines
+    if result == -1 then
+        putStrLn "OK"
+    else
+        putStrLn (show result)
+
+-- | Parses the file lines one by one recursively
+parseLines :: [String] -- ^ The list of lines to be parsed
+           -> Int      -- ^ Returns -1 on success or a line number on error
+parseLines lines = if mapLinesResult /= -1 then mapLinesResult else if coordinateLinesResult /= -1 then (coordinateLinesResult + length mapLines) else -1
+    where
+        index = listHeadNot lines '#' -- Split the list of lines when the first character of a line isn't '#'
+        (mapLines, coordinateLines) = splitAt index lines
+        mapLinesResult = validateMapLines mapLines 0 (length (head mapLines))
+        coordinateLinesResult = validateCoordinateLines coordinateLines 0
+
+-- | Validates a single line, expected to be part of the map
+validateMapLines :: [String] -- ^ The array of lines being parsed
+                 -> Int      -- ^ The number of lines already parsed
+                 -> Int      -- ^ The expected length of a map line
+                 -> Int      -- ^ -1 on success, line index on error
+validateMapLines lines index expectedLength
+    | (index >= length lines) = if index >= 3 then -1 else index -- Finished iterating over the lines
+    | (length line /= expectedLength) = index                    -- Check the line length
+    | (head line /= '#' || last line /= '#') = index             -- Check if the first and last chars on the line are '#'
+    | not (listHasOnly line ['#', ' ', '.']) = index             -- Check that the line only has the characters ['#', ' ', '.']
+    | otherwise = validateMapLines lines (index + 1) expectedLength
+    where
+        line = lines !! index
+
+{-
+-- | Validates a single line, expected to be a coordinate
+-- | The coordinate lines validation function can return a line number relative to the lines it was given
+-- | because we calculate the correct line number on the parent function (coordinateLinesResult + length mapLines)
+validateCoordinateLine :: [String] -- ^ The array of lines being parsed
+                       -> Int      -- ^ The number of lines already parsed
+                       -> Int     -- ^ -1 on success, line index on error
+validateCoordinateLine lines index
+-}
+
+-- Auxiliary functions
+
+-- | Checks if a list has only a certain set of items
+listHasOnly :: (Eq a)
+            => [a] -- ^ List to evaluate
+            -> [a] -- ^ List of items the list can contain
+            -> Bool
+listHasOnly list items = not (elem False (map aux list))
+    where
+        aux x = aux2 x items
+        aux2 x [] = False
+        aux2 x (y : ys)
+            | (x == y) = True
+            | (x /= y && null ys) = False
+            | otherwise = aux2 x ys
+
+-- | Returns the index at which a list of strings stops having a certain head character
+listHeadNot :: [String] -> Char -> Int
+listHeadNot [] _ = 0
+listHeadNot x char = aux x char 0
+    where
+        aux [] _ currentIndex = currentIndex
+        aux (x : xs) char currentIndex
+            | (head x /= char) = currentIndex
+            | otherwise = aux xs char (currentIndex + 1)

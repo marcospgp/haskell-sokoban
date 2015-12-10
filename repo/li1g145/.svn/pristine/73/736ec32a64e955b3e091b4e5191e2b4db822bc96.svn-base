@@ -1,0 +1,227 @@
+module Main where
+
+import Data.Char
+import Data.List
+import Data.List.Split
+-- import Debug.Trace
+
+type Coord = (Int,Int)
+
+-- Start of copied code from Mooshak
+
+inStr :: String -> [String]
+inStr [] = []
+inStr ['\n'] = [[],[]]
+inStr (x:xs) = case x of
+    '\n' -> []:inStr xs
+    otherwise -> case inStr xs of
+        y:ys -> (x:y):ys
+        [] -> [[x]]
+
+outStr :: [String] -> String
+outStr [] = "\n"
+outStr t = unlines t
+
+{-
+-- dev main
+main = do
+    inp <- getLine
+    content <- readFile inp -- Read the input file
+    let fileLines = lines content
+    putStrLn (head (tarefa1 fileLines))
+-- /dev main
+-}
+
+--{-
+-- dist main
+main = do
+    inp <- getContents
+    putStr (outStr (tarefa1 (inStr inp)))
+-- /dist main
+---}
+
+-- End of copied code from Mooshak
+
+-- | Validates sokoban input including map and coordinates. Returns OK or the number of the line where an error was found.
+tarefa1 :: [String] -- ^ The list of lines to be parsed
+        -> [String] -- ^ Returns ["OK"] on success or a line number on error (ex: ["2"])
+tarefa1 lines =
+    if mapLinesResult /= -1 then
+        [show (mapLinesResult + 1)]
+    else if not playerCoordinateResult then
+        [show ((length mapLines) + 1)]
+    else if coordinateLinesResult /= -1 then
+        [show ((length mapLines) + 1 + coordinateLinesResult)] -- coordinateLinesResult is 1 based due to the playerCoordinate
+    else if emptyLinesResult /= -1 then
+        [show ((length mapLines + length coordinateLines) + 1 + emptyLinesResult)]
+    else
+        ["OK"]
+    where
+        -- We're gonna split the list on the last element that is '#', so that we get the correct map lines division
+        -- even if one of the map lines doesn't start with '#' (which is an error that we later report)
+        index = listHeadIsCoordinate lines
+        (mapLines, preCoordinateLines) = splitAt index lines
+        (coordinateLines, emptyLines) = span (/= "") preCoordinateLines
+        mapLinesResult = if (length mapLines > 0) then validateMapLines mapLines 0 else 0
+        playerCoordinateResult = if (length coordinateLines > 0) then validatePlayerCoordinates mapLines (head coordinateLines) else False
+        coordinateLinesResult = if (length coordinateLines > 1) then validateCoordinateLines mapLines coordinateLines 1 [head coordinateLines] else 1 -- Starting index is 1 because player coordinate has already been checked
+        emptyLinesResult = validateEmptyLines emptyLines 0
+
+-- | Validates map lines recursively
+validateMapLines :: [String] -- ^ List of map lines
+                 -> Int      -- ^ Number of lines already parsed
+                 -> Int      -- ^ -1 on success, line index on error
+validateMapLines lines index
+    | (index >= length lines) = if index >= 3 then -1 else index                              -- Finished iterating over the lines (break case), also checks that the map has at least 3 lines
+    | ((length line /= length (lines !! 0)) || (length line < 3)) = index                     -- Check that the line length is equal to the length of the first map line
+    | (index == 0 || index == ((length lines) - 1)) && (not (listHasOnly line ['#'])) = index -- Check that first and last lines are only comprised of '#'
+    | (head line /= '#' || last line /= '#') = index                                          -- Check if the first and last chars on the line are '#'
+    | not (listHasOnly line ['#', ' ', '.']) = index                                          -- Check that the line only has the characters ['#', ' ', '.']
+    | otherwise = validateMapLines lines (index + 1)
+    where
+        line = lines !! index
+
+-- | Validates a single line containing the player coordinates
+validatePlayerCoordinates :: [String] -- ^ List of map lines
+                          -> String -- ^ Player coordinate line
+                          -> Bool   -- ^ True when valid, False otherwise
+validatePlayerCoordinates mapLines line
+    | not (validateCoordinateFormat line) = False
+    | otherwise =
+        if (xCoord >= 0) && (yCoord >= 0) && (length mapLines >= (yCoord + 1)) && (length (mapLines !! yCoord) >= (xCoord + 1)) && (mapLines !! yCoord !! xCoord == ' ') then
+            True
+        else
+            False
+        where
+            coordinates = splitOn [' '] line
+            xCoord = read (coordinates !! 0) -- x coordinate relative to left, index is 0 based
+            yCoord = ((length mapLines) - 1) - read (coordinates !! 1) -- y coordinate relative to top, index is 0 based
+
+-- | Validates coordinate lines recursively
+-- |
+-- | Note:
+-- |  The coordinate lines validation function can return a line number relative to the lines it was given
+-- |  because we calculate the correct line number on the parent function (coordinateLinesResult + length mapLines)
+-- |
+validateCoordinateLines :: [String] -- ^ List of map lines
+                        -> [String] -- ^ List of coordinate lines
+                        -> Int      -- ^ Number of coordinate lines already parsed (starts off as 1, due to the player coordinate line)
+                        -> [String] -- ^ List of already parsed coordinate lines (to check for repetition)
+                        -> Int      -- ^ -1 on success, line index on error
+validateCoordinateLines mapLines coordLines index parsedLines
+    | (index >= length coordLines) = if index <= boxNumber then index else -1 --  Parsed all lines (break case)
+    | not (validateCoordinateFormat line) = index -- Check if coordinate is valid
+    | index > boxNumber = index                   -- Check if this box has a slot to be placed at
+    | elem line parsedLines = index               -- Check that the coordinate is not repeated
+    | otherwise =
+        if (xCoord >= 0) && (yCoord >= 0) && (length mapLines >= (yCoord + 1)) && (length (mapLines !! yCoord) >= (xCoord + 1)) && ((mapLines !! yCoord !! xCoord == ' ') || (mapLines !! yCoord !! xCoord == '.')) then
+            validateCoordinateLines mapLines coordLines (index + 1) (parsedLines ++ [line])
+        else
+            index
+    where
+        line = coordLines !! index
+        coordinates = splitOn [' '] line
+        xCoord = read (coordinates !! 0) -- x coordinate relative to left, index is 0 based
+        yCoord = ((length mapLines) - 1) - read (coordinates !! 1) -- y coordinate relative to top, index is 0 based
+        boxNumber = howManyTimes '.' mapLines
+
+-- | Validates the last lines of the input, after the coordinates have ended. Makes sure the lines are all empty
+validateEmptyLines :: [String] -- ^ List of "empty" lines
+                   -> Int      -- ^ Number of lines parsed
+                   -> Int
+validateEmptyLines [] index = -1
+validateEmptyLines (x : xs) index
+    | x /= "" = index
+    | otherwise = validateEmptyLines xs (index + 1)
+
+-- Auxiliary functions
+
+-- | Checks if a list has only a certain set of items
+listHasOnly :: (Eq a)
+            => [a] -- ^ List to evaluate
+            -> [a] -- ^ List of items the list can contain
+            -> Bool
+listHasOnly [] [] = True
+listHasOnly [] _ = False
+listHasOnly list items = not (elem False (map aux list))
+    where
+        aux x = aux2 x items
+        aux2 x [] = False
+        aux2 x (y : ys)
+            | (x == y) = True
+            | (x /= y && null ys) = False
+            | otherwise = aux2 x ys
+
+-- | Returns the index at which a list of strings stops having a certain head character
+listHeadNot :: [String] -> Char -> Int
+listHeadNot [] _ = 0
+listHeadNot x char = aux x char 0
+    where
+        aux [] _ currentIndex = currentIndex
+        aux (x : xs) char currentIndex
+            | (length x < 1) = currentIndex
+            | (head x /= char) = currentIndex
+            | otherwise = aux xs char (currentIndex + 1)
+
+-- | Returns the index at which the first character of a line from a list of strings is a certain character or the length of the list if the character is not found
+listHeadIs :: [String] -> Char -> Int
+listHeadIs [] _ = 0
+listHeadIs x char = aux x char 0
+    where
+        aux [] _ currentIndex = currentIndex
+        aux (x : xs) char currentIndex
+            | (length x > 0 && head x == char) = currentIndex
+            | (null xs) = currentIndex + 1
+            | otherwise = aux xs char (currentIndex + 1)
+
+-- | Had to create my own version of elemIndex that returns an Int all the time instead of a stupid maybe int that just makes code bloated. I hate haskell.
+-- | Returns index at which an element is found in a list or -1 if the element isn't found
+myElemIndex :: (Eq a) => a -> [a] -> Int
+myElemIndex x list = aux x list 0
+    where
+        aux _ [] _ = -1
+        aux x (y : ys) index
+            | x == y = index
+            | otherwise = aux x ys (index + 1)
+
+-- | Checks if a coordinate is in the right format (number, space, number) e.g. "12 24"
+validateCoordinateFormat :: String -> Bool
+validateCoordinateFormat line
+    | length spaces /= 1 = False
+    | length other > 0 = False
+    | (myElemIndex ' ' line == 0) || (myElemIndex ' ' line == ((length line) - 1)) = False
+    | length coordinates > 2 = False
+    | otherwise = True
+    where
+        spaces = filter (== ' ') line
+        other = filter (\x -> not (isDigit x) && not (x == ' ')) line
+        coordinates = splitOn [' '] line
+
+-- | Returns the number of ocurrences of a given element on a list of lists
+howManyTimes :: (Eq a) => a -> [[a]] -> Int
+howManyTimes x [] = 0
+howManyTimes x (y : ys) = (aux x y) + howManyTimes x ys
+    where
+        aux :: (Eq a) => a -> [a] -> Int
+        aux x [] = 0
+        aux x (y : ys)
+            | x == y = 1 + aux x ys
+            | otherwise = aux x ys
+
+-- | Checks the coordinates present in a list of coordinate lines are all different, and if not, returns the index of the first repeating coordinate
+noRepeatedCoordinates :: [String] -> Int
+noRepeatedCoordinates list = aux list 0 []
+    where
+        aux [] _ _ = -1
+        aux (x : xs) index checkedCoordinates
+            | (elem x checkedCoordinates || not (validateCoordinateFormat x)) = index
+            | otherwise = aux xs (index + 1) (checkedCoordinates ++ [x])
+
+-- | Returns the index at which the first string of a list is a coordinate or the list's length when a coordinate was not found
+listHeadIsCoordinate :: [String] -> Int
+listHeadIsCoordinate list = aux list 0
+    where
+        aux [] index = index
+        aux (x : xs) index
+            | validateCoordinateFormat x = index
+            | otherwise = aux xs (index + 1)

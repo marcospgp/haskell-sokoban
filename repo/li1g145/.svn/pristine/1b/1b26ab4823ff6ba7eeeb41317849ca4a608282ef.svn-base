@@ -1,0 +1,12 @@
+module Main where
+
+import qualified Data.Text as T
+
+outStr :: [String] -> String
+outStr [] = "\n"
+outStr t = unlines (map (T.unpack . T.stripEnd . T.pack) t)
+
+main = do inp <- getContents
+          putStr (outStr (tarefa2 (lines inp)))
+
+tarefa2 :: [String] -> [String]

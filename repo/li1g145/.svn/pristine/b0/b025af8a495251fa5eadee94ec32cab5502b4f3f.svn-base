@@ -1,0 +1,379 @@
+{-|
+Module      : Sokoban
+Description : Sokoban project for MIEI LI1 - Final game
+License     : Unlicensed
+-}
+
+module Main where
+
+import Graphics.Gloss
+import Graphics.Gloss.Data.Picture -- To draw pictures
+import Graphics.Gloss.Interface.Pure.Game -- To react to events
+
+import qualified Data.Text as T
+import Data.Char
+import Data.List
+import Data.List.Split
+import Debug.Trace
+
+-- The World type, used to hold the game state
+data World = World {
+                    mapLines :: [String], -- A list of map lines
+                    playerPos :: [Int],   -- A list containing the player's position in the format [x, y]
+                    boxPos :: [[Int]]     -- A list containing all the box positions in the format [x, y]
+                   } deriving (Show)      -- Note: All Y coordinates used in the game are relative to the top of the map
+
+-- | Main function which starts off the game
+main = play (InWindow "Nice Window" (200, 200) (10, 10)) white 60 initialMap drawMap handleInput updateWorld
+    where
+        initialMap = (["###################",
+                        "#####   ###########",
+                        "#####   ###########",
+                        "#####   ###########",
+                        "###      ##########",
+                        "### # ## ##########",
+                        "#   # ## #####  ..#",
+                        "#               ..#",
+                        "##### ### # ##  ..#",
+                        "#####     #########",
+                        "###################"],
+                        [11, 2],
+                        [[5, 8],
+                        [7, 7],
+                        [5, 6],
+                        [7, 6],
+                        [2, 3],
+                        [5, 3]])
+        playerSprite = loadBMP "./assets/Character1.bmp"
+        crateBrownSprite = loadBMP "./assets/Crate_Brown.bmp"
+        crateBlueSprite = loadBMP "./assets/Crate_Blue.bmp"
+        wallBrownSprite = loadBMP "./assets/Crate_Blue.bmp"
+        wallBeigeSprite = loadBMP "./assets/Wall_Beige.bmp"
+        wallBrownSprite = loadBMP "./assets/Wall_Brown.bmp"
+
+-- | A function to convert the world into a picture
+drawMap :: World -> Picture
+
+-- | A function to handle input events
+handleInput :: Event -> World -> World
+
+-- | A function to step the world one iteration. It is passed the period of time (in seconds) needing to be advanced
+updateWorld :: Float -> World -> World
+
+-- | Processes a map, a set of player and box coordinates, and a sequence of commands and returns a string containing the resulting game status, as well as the number of valid commands executed
+-- This function converts all the input coordinates from being bottom-based to being top-based, so the remaining code can use the map more easily.
+tarefa4 :: [String] -- ^ The list of lines to be parsed
+        -> [String] -- ^ Returns a status string containing the result and the number of ticks (valid commands executed) after the execution of the commands
+tarefa4 lines = [processCommandSequence commandsLine mapLines boxPositions playerPosition 0]
+    where
+        index = listHeadIsCoordinate lines
+        (mapLines, otherLines) = splitAt index lines
+        (otherLinesMinusEmpty, emptyLines) = span (/= "") otherLines
+        coordinates = parseCoordinateLines (init otherLinesMinusEmpty)
+        boxCoordinates = tail coordinates -- Box coordinates with the Y coordinate bottom-relative
+        boxPositions = yCoordinatesToTopRelative boxCoordinates (length mapLines) -- Box coordinates with the Y coordinate top-relative (what we want)
+        commandsLine = last otherLinesMinusEmpty
+        playerCoordinates = head coordinates -- Player coordinates with the Y coordinate bottom-relative
+        -- playerPosition is in the format [x, y]
+        -- x coordinate relative to left, index is 0 based
+        -- y coordinate relative to top, index is 0 based
+        playerPosition = [(playerCoordinates !! 0), (yCoordinateToTopRelative (playerCoordinates !! 1) (length mapLines))]
+
+-- | Processes a sequence of commands, given a map and player and box coordinates, and returns a status string
+processCommandSequence :: String   -- ^ The list of commands to execute in the format "UDLRU" (Up, Down, Left, Right, Up)
+                       -> [String] -- ^ The list of map lines
+                       -> [[Int]]  -- ^ The list of box coordinates in the format [[x1, y1], [x2, y2]] (y is top relative)
+                       -> [Int]    -- ^ The player coordinates, y relative to top
+                       -> Int      -- ^ Number of valid commands executed, starts at 0
+                       -> String   -- ^ Returns a status line containing the final game status and the number of valid commands executed
+processCommandSequence [] mapLines boxPos playerPos ticks = (checkGameStatus mapLines boxPos playerPos) ++ " " ++ (show ticks)
+processCommandSequence (x : xs) mapLines boxPos playerPos ticks
+    | isCommandValid = processCommandSequence xs mapLines newBoxPositions newPlayerPosition (ticks + 1)
+    | otherwise = processCommandSequence xs mapLines boxPos playerPos ticks
+    where
+        isCommandValid = validateCommand x mapLines boxPos playerPos
+        (newPlayerPosition : newBoxPositions) = processCommand x mapLines boxPos playerPos
+
+-- | Checks if a command is valid and returns a boolean accordingly
+validateCommand :: Char     -- ^ The command to be processed (can be L (left) U (up) R (right) or D (down))
+                -> [String] -- ^ The list of map lines
+                -> [[Int]]  -- ^ The list of box coordinates in the format [[x1, y1], [x2, y2]] (y relative to top)
+                -> [Int]    -- ^ The player coordinates (y relative to top)
+                -> Bool     -- ^ Returns true if the command is valid, false otherwise
+validateCommand command mapLines boxPos playerPos =
+
+    -- Check that no coordinates are out of bounds
+    if ((desiredX < 0 || desiredX > maxX) || (desiredY < 0 || desiredY > maxY)) then
+        False
+    -- Desired position is available
+    else if (charAtDesiredPosition /= '#' && not (isBoxAtDesiredPosition)) then
+        True
+    -- Desired position is a wall
+    else if (charAtDesiredPosition == '#') then
+        False
+    -- There is a box at the desired position
+    else if (charAtDesiredPosition /= '#' && isBoxAtDesiredPosition) then
+        -- Box has nowhere to go
+        if (isBoxAheadOfDesiredPosition || (charAheadOfDesiredPosition == '#')) then
+            False
+        -- Box can move
+        else
+            True
+    -- Default to false in case we missed anything above
+    else
+        False
+
+    where
+        maxX = (length (mapLines !! 0)) - 1
+        maxY = (length (mapLines)) - 1
+        cmdVector = commandToVector command
+        desiredX = (fst cmdVector) + (playerPos !! 0)
+        desiredY = (snd cmdVector) + (playerPos !! 1)
+        afterDesiredX = desiredX + (fst cmdVector)
+        afterDesiredY = desiredY + (snd cmdVector)
+        -- What is there on the place we want to move to?
+        charAtDesiredPosition = {- trace ("\ncharAtDesiredPosition: " ++ show ((mapLines !! desiredY) !! desiredX)) -} ((mapLines !! desiredY) !! desiredX)
+        -- Is there a box at the place we want to move to?
+        isBoxAtDesiredPosition = {- trace ("isBoxAtDesiredPosition: " ++ (show (elem [desiredX, desiredY] boxPos))) -} (elem [desiredX, desiredY] boxPos)
+        -- What is there one position ahead of the place we want to move to? (necessary if, for example, there is a box in the place we want to move to)
+        charAheadOfDesiredPosition = {- trace ("CharAheadOfDesiredPosition: " ++ (show ((mapLines !! afterDesiredY) !! afterDesiredY))) -} ((mapLines !! afterDesiredY) !! afterDesiredX)
+        -- Is there a box one position ahead of the place we want to move to?
+        isBoxAheadOfDesiredPosition = {- trace ("isBoxAheadOfDesiredPosition: " ++ show (elem [afterDesiredX, afterDesiredY] boxPos)) -} (elem [afterDesiredX, afterDesiredY] boxPos)
+
+-- | Processes a command on a map, a player coordinate, and a set of box coordinates, and returns the resulting player and box coordinates
+processCommand :: Char     -- ^ The command to be processed (can be L (left) U (up) R (right) or D (down))
+               -> [String] -- ^ The list of map lines
+               -> [[Int]]  -- ^ The list of box coordinates in the format [[x1, y1], [x2, y2]] (y relative to top)
+               -> [Int]    -- ^ The player coordinates (y relative to top)
+               -> [[Int]]  -- ^ Returns a list of coordinates, with the first being the player position the the remaining ones being box positions
+processCommand command mapLines boxPos playerPos =
+
+    -- There isn't a box at the desired position (we do not need to move a box)
+    if (not (isBoxAtDesiredPosition)) then
+        [desiredX, desiredY] : boxPos
+
+    -- There is a box at our desired position, so we have to move it
+    else
+        let
+            newBoxPos = [afterDesiredX, afterDesiredY]
+        in
+            [desiredX, desiredY] : newBoxPos : (delete [desiredX, desiredY] boxPos)
+
+    where
+        cmdVector = commandToVector command
+        desiredX = (fst cmdVector) + (playerPos !! 0)
+        desiredY = (snd cmdVector) + (playerPos !! 1)
+        afterDesiredX = desiredX + (fst cmdVector)
+        afterDesiredY = desiredY + (snd cmdVector)
+        -- What is there on the place we want to move to?
+        charAtDesiredPosition = (mapLines !! desiredY) !! desiredX
+        -- Is there a box at the place we want to move to?
+        isBoxAtDesiredPosition = elem [desiredX, desiredY] boxPos
+
+-- | Checks a map and player and box coordinates and returns a string describing the game status. Can be "FIM" or "INCOMPLETO"
+checkGameStatus :: [String] -- ^ The list of map lines
+                -> [[Int]]  -- ^ The list of box coordinates in the format [[x1, y1], [x2, y2]] (y relative to top)
+                -> [Int]    -- ^ The player coordinates (y relative to top)
+                -> String   -- ^ Returns either "FIM" or "INCOMPLETO" based on game status
+checkGameStatus mapLines boxPos playerPos =
+    if (allBoxesPlaced mapLines boxPos) then
+        "FIM"
+    else
+        "INCOMPLETO"
+    where
+        allBoxesPlaced mapLines [] = True
+        allBoxesPlaced mapLines (x : xs) =
+            let
+                xPos = x !! 0
+                yPos = x !! 1
+            in
+                if (((mapLines !! yPos) !! xPos) == '.') then
+                    allBoxesPlaced mapLines xs
+                else
+                    False
+
+{-
+-- | Processes a command on a map, a player coordinate, and a set of box coordinates, and returns the resulting player and box coordinates
+processCommand :: String   -- ^ The command to be processed (can be L (left) U (up) R (right) or D (down))
+               -> [String] -- ^ The list of map lines
+               -> [[Int]]  -- ^ The list of box coordinates in the format [[x1, y1], [x2, y2]] (y relative to top)
+               -> [Int]    -- ^ The player coordinates (y relative to top)
+               -> [[Int]]  -- ^ Returns a list of coordinates, with the first being the player position the the remaining ones being box positions
+processCommand command mapLines coordinateLines playerPosition =
+    if isAvailable then
+        [(show targetXCoord) ++ " " ++ (show (yCoordinateToBottomRelative targetYCoord (length mapLines)))]
+    else
+        [(show (playerPosition !! 0)) ++ " " ++ (show (yCoordinateToBottomRelative (playerPosition !! 1) (length mapLines)))]
+    where
+        commandVector = commandToVector command
+        targetXCoord = (playerPosition !! 0) + (fst commandVector)
+        targetYCoord = (playerPosition !! 1) - (snd commandVector) -- Minus because y coordinate is relative to top
+        isAvailable = isPositionAvailable mapLines coordinateLines [targetXCoord, targetYCoord] commandVector
+-}
+
+{-
+-- | Determines if a certain position is available for the player to move to, based on their movement vector (since the movement direction influences the effect on boxes)
+isPositionAvailable :: [String]   -- ^ The list of map lines
+                    -> [String]   -- ^ The list of box coordinate lines
+                    -> [Int]      -- ^ The player's desired position
+                    -> (Int, Int) -- ^ The player's movement vector
+                    -> Bool       -- ^ Returns true if the position is available or false otherwise
+isPositionAvailable mapLines coordinateLines playerPosition vector
+    | charAtPosition == '#' = False -- If the position is a '#', then it is not available
+    -- If the space is available but a box is there
+    | ((charAtPosition == ' ') || (charAtPosition == '.')) && (elem (coordinatesToString xCoord (yCoordinateToBottomRelative yCoord (length mapLines))) coordinateLines) =
+        if ((charAhead == '#') || (((charAhead == ' ') || (charAhead == '.')) && (elem (coordinatesToString xCoordAhead (yCoordinateToBottomRelative yCoordAhead (length mapLines))) coordinateLines))) then
+            False
+        else
+            True
+    | otherwise = True
+    where
+        xCoord = playerPosition !! 0
+        yCoord = playerPosition !! 1
+        charAtPosition = ((mapLines !! yCoord) !! xCoord)
+        xCoordAhead = xCoord + (fst vector)
+        yCoordAhead = yCoord - (snd vector) -- Minus because y coordinate is relative to top
+        charAhead = ((mapLines !! yCoordAhead) !! xCoordAhead)
+-}
+
+{-
+    Auxiliary functions
+-}
+
+-- | Parses a list of coordinate lines to the format [[x1, y1], [x2, y2]]
+parseCoordinateLines :: [String] -- ^ The list of coordinate lines to be parsed
+                     -> [[Int]]  -- ^ Returns the received coordinates as [[x1, y1], [x2, y2]]
+parseCoordinateLines [] = []
+parseCoordinateLines (x : xs) = let [a, b] = splitOn " " x in [read a, read b] : parseCoordinateLines xs
+
+-- | Converts a set of coordinates to a coordinate string
+coordinatesToString :: Int    -- ^ The x coordinate
+                    -> Int    -- ^ The y coordinate
+                    -> String -- ^ Returns the coordinate string
+coordinatesToString xCoord yCoord = (show xCoord) ++ " " ++ (show yCoord)
+
+-- | Converts a command to the corresponding movement vector. For example, calling this function with 'U' yields (0, 1)
+commandToVector :: Char       -- ^ The command to be converted
+                -> (Int, Int) -- ^ The resulting vector
+commandToVector x
+    | (x == 'U') || (x == 'u') = (0, -1) -- Up and down are inverted here because we deal with Y coordinates as top-relative
+    | (x == 'D') || (x == 'd') = (0, 1)
+    | (x == 'R') || (x == 'r') = (1, 0)
+    | (x == 'L') || (x == 'l') = (-1, 0)
+    | otherwise = (0, 0)
+
+-- | Converts a Y coordinate to become relative to the bottom of the map
+yCoordinateToBottomRelative :: Int -- ^ The Y coordinate
+                            -> Int -- ^ The height of the map
+                            -> Int -- ^ The new, converted Y coordinate
+yCoordinateToBottomRelative yCoord mapHeight =  (mapHeight - 1) - yCoord
+
+-- | Converts a Y coordinate to become relative to the top of the map
+yCoordinateToTopRelative :: Int -- ^ The Y coordinate
+                         -> Int -- ^ The height of the map
+                         -> Int -- ^ The new, converted Y coordinate
+yCoordinateToTopRelative yCoord mapHeight = (mapHeight - 1) - yCoord
+
+-- | Converts a list of coordinates to having the Y coordinate relative to the bottom of the map
+yCoordinatesToBottomRelative :: [[Int]] -- ^ The list of coordinates
+                             -> Int     -- ^ The height of the map
+                             -> [[Int]] -- ^ The new, converted list of coordinates
+yCoordinatesToBottomRelative [] _ =  []
+yCoordinatesToBottomRelative ([a, b] : xs) mapHeight = [a, ((mapHeight - 1) - b)] : (yCoordinatesToBottomRelative xs mapHeight)
+
+-- | Converts a list of coordinates to having the Y coordinate relative to the top of the map
+yCoordinatesToTopRelative :: [[Int]] -- ^ The list of coordinates
+                          -> Int     -- ^ The height of the map
+                          -> [[Int]] -- ^ The new, converted list of coordinates
+yCoordinatesToTopRelative [] _ =  []
+yCoordinatesToTopRelative ([a, b] : xs) mapHeight = [a, ((mapHeight - 1) - b)] : (yCoordinatesToTopRelative xs mapHeight)
+
+-- | Checks if a list has only a certain set of items
+listHasOnly :: (Eq a)
+            => [a] -- ^ List to evaluate
+            -> [a] -- ^ List of items the list can contain
+            -> Bool
+listHasOnly [] [] = True
+listHasOnly [] _ = False
+listHasOnly list items = not (elem False (map aux list))
+    where
+        aux x = aux2 x items
+        aux2 x [] = False
+        aux2 x (y : ys)
+            | (x == y) = True
+            | (x /= y && null ys) = False
+            | otherwise = aux2 x ys
+
+-- | Returns the index at which a list of strings stops having a certain head character
+listHeadNot :: [String] -> Char -> Int
+listHeadNot [] _ = 0
+listHeadNot x char = aux x char 0
+    where
+        aux [] _ currentIndex = currentIndex
+        aux (x : xs) char currentIndex
+            | (length x < 1) = currentIndex
+            | (head x /= char) = currentIndex
+            | otherwise = aux xs char (currentIndex + 1)
+
+-- | Returns the index at which the first character of a line from a list of strings is a certain character or the length of the list if the character is not found
+listHeadIs :: [String] -> Char -> Int
+listHeadIs [] _ = 0
+listHeadIs x char = aux x char 0
+    where
+        aux [] _ currentIndex = currentIndex
+        aux (x : xs) char currentIndex
+            | (length x > 0 && head x == char) = currentIndex
+            | (null xs) = currentIndex + 1
+            | otherwise = aux xs char (currentIndex + 1)
+
+-- | My own version of elemIndex that returns an Int all the time instead of a stupid maybe int that just makes code bloated. I hate haskell (shh).
+-- Returns index at which an element is found in a list or \-1 if the element isn't found
+myElemIndex :: (Eq a) => a -> [a] -> Int
+myElemIndex x list = aux x list 0
+    where
+        aux _ [] _ = -1
+        aux x (y : ys) index
+            | x == y = index
+            | otherwise = aux x ys (index + 1)
+
+-- | Checks if a coordinate is in the right format (number, space, number) e.g. "12 24"
+validateCoordinateFormat :: String -> Bool
+validateCoordinateFormat line
+    | length spaces /= 1 = False
+    | length other > 0 = False
+    | (myElemIndex ' ' line == 0) || (myElemIndex ' ' line == ((length line) - 1)) = False
+    | length coordinates > 2 = False
+    | otherwise = True
+    where
+        spaces = filter (== ' ') line
+        other = filter (\x -> not (isDigit x) && not (x == ' ')) line
+        coordinates = splitOn [' '] line
+
+-- | Returns the number of ocurrences of a given element on a list of lists
+howManyTimes :: (Eq a) => a -> [[a]] -> Int
+howManyTimes x [] = 0
+howManyTimes x (y : ys) = (aux x y) + howManyTimes x ys
+    where
+        aux :: (Eq a) => a -> [a] -> Int
+        aux x [] = 0
+        aux x (y : ys)
+            | x == y = 1 + aux x ys
+            | otherwise = aux x ys
+
+-- | Checks the coordinates present in a list of coordinate lines are all different, and if not, returns the index of the first repeating coordinate
+noRepeatedCoordinates :: [String] -> Int
+noRepeatedCoordinates list = aux list 0 []
+    where
+        aux [] _ _ = -1
+        aux (x : xs) index checkedCoordinates
+            | (elem x checkedCoordinates || not (validateCoordinateFormat x)) = index
+            | otherwise = aux xs (index + 1) (checkedCoordinates ++ [x])
+
+-- | Returns the index at which the first string of a list is a coordinate or the list's length when a coordinate was not found
+listHeadIsCoordinate :: [String] -> Int
+listHeadIsCoordinate list = aux list 0
+    where
+        aux [] index = index
+        aux (x : xs) index
+            | validateCoordinateFormat x = index
+            | otherwise = aux xs (index + 1)

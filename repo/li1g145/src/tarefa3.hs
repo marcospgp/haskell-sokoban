@@ -1,0 +1,227 @@
+{-|
+Module      : Sokoban Tarefa 3
+Description : Sokoban project for MIEI LI1 - Tarefa 3
+License     : Unlicensed
+-}
+
+module Main where
+
+import qualified Data.Text as T
+import Data.Char
+import Data.List
+import Data.List.Split
+import Debug.Trace
+
+-- Start of copied code from Mooshak
+
+-- | Boilerplate function by teacher
+inStr :: String -> [String]
+inStr [] = []
+inStr ['\n'] = [[],[]]
+inStr (x:xs) = case x of
+    '\n' -> []:inStr xs
+    otherwise -> case inStr xs of
+        y:ys -> (x:y):ys
+        [] -> [[x]]
+
+-- | Boilerplate function by teacher
+outStr :: [String] -> String
+outStr [] = "\n"
+outStr t = unlines (map (T.unpack . T.stripEnd . T.pack) t)
+
+-- {-
+-- dev main
+main = do inp <- getLine
+          content <- readFile inp
+          let fileLines = lines content
+          putStrLn (head (tarefa3 fileLines))
+-- /dev main
+-- -}
+
+{-
+-- dist main
+
+-- | Main function which starts off the program by getting the input
+main = do inp <- getContents
+          putStr (outStr (tarefa3 (inStr inp)))
+
+-- /dist main
+-}
+
+-- End of copied code from Mooshak
+
+-- | Validates sokoban input including map, coordinates and movement command. Returns the player position after the command is executed.
+tarefa3 :: [String] -- ^ The list of lines to be parsed
+        -> [String] -- ^ Returns the new player coordinates
+tarefa3 lines = processCommand mapLines boxCoordinateLines playerPosition command
+    where
+        index = listHeadIsCoordinate lines
+        (mapLines, otherLines) = splitAt index lines
+        (otherLinesMinusEmpty, emptyLines) = span (/= "") otherLines
+        coordinateLines = init otherLinesMinusEmpty
+        boxCoordinateLines = tail coordinateLines
+        command = last otherLinesMinusEmpty
+        -- x coordinate relative to left, index is 0 based
+        -- y coordinate relative to top, index is 0 based
+        playerCoordinates = splitOn [' '] (head coordinateLines)
+        playerPosition = [(read (playerCoordinates !! 0)), (yCoordinateToTopRelative (read (playerCoordinates !! 1)) (length mapLines))]
+
+-- | Processes the command passed by the input
+processCommand :: [String] -- ^ The list of map lines (to check for ' ' or '#')
+               -> [String] -- ^ The list of coordinate lines (to check for boxes)
+               -> [Int]    -- ^ The current player's position
+               -> String   -- ^ The command to be processed (can be L (left) U (up) R (right) or D (down))
+               -> [String] -- ^ Returns a string with the new player position after the command is processed
+processCommand mapLines coordinateLines playerPosition command =
+    if isAvailable then
+        [(show targetXCoord) ++ " " ++ (show (yCoordinateToBottomRelative targetYCoord (length mapLines)))]
+    else
+        [(show (playerPosition !! 0)) ++ " " ++ (show (yCoordinateToBottomRelative (playerPosition !! 1) (length mapLines)))]
+    where
+        commandVector = commandToVector command
+        targetXCoord = (playerPosition !! 0) + (fst commandVector)
+        targetYCoord = (playerPosition !! 1) - (snd commandVector) -- Minus because y coordinate is relative to top
+        isAvailable = isPositionAvailable mapLines coordinateLines [targetXCoord, targetYCoord] commandVector
+
+-- | Determines if a certain position is available for the player to move to, based on their movement vector (since the movement direction influences the effect on boxes)
+isPositionAvailable :: [String]   -- ^ The list of map lines
+                    -> [String]   -- ^ The list of box coordinate lines
+                    -> [Int]      -- ^ The player's desired position
+                    -> (Int, Int) -- ^ The player's movement vector
+                    -> Bool       -- ^ Returns true if the position is available or false otherwise
+isPositionAvailable mapLines coordinateLines playerPosition vector
+    | charAtPosition == '#' = False -- If the position is a '#', then it is not available
+    -- If the space is available but a box is there
+    | ((charAtPosition == ' ') || (charAtPosition == '.')) && (elem (coordinatesToString xCoord (yCoordinateToBottomRelative yCoord (length mapLines))) coordinateLines) =
+        if ((charAhead == '#') || (((charAhead == ' ') || (charAhead == '.')) && (elem (coordinatesToString xCoordAhead (yCoordinateToBottomRelative yCoordAhead (length mapLines))) coordinateLines))) then
+            False
+        else
+            True
+    | otherwise = True
+    where
+        xCoord = playerPosition !! 0
+        yCoord = playerPosition !! 1
+        charAtPosition = ((mapLines !! yCoord) !! xCoord)
+        xCoordAhead = xCoord + (fst vector)
+        yCoordAhead = yCoord - (snd vector) -- Minus because y coordinate is relative to top
+        charAhead = ((mapLines !! yCoordAhead) !! xCoordAhead)
+
+-- | Converts a set of coordinates to a coordinate string
+coordinatesToString :: Int    -- ^ The x coordinate
+                    -> Int    -- ^ The y coordinate
+                    -> String -- ^ Returns the coordinate string
+coordinatesToString xCoord yCoord = (show xCoord) ++ " " ++ (show yCoord)
+
+-- | Converts a command to the corresponding movement vector. For example, calling this function with "U" yields (0, 1)
+commandToVector :: String     -- ^ The command to be converted
+                -> (Int, Int) -- ^ The resulting vector
+commandToVector x
+    | (x == "U") || (x == "u") = (0, 1)
+    | (x == "D") || (x == "d") = (0, -1)
+    | (x == "R") || (x == "r") = (1, 0)
+    | (x == "L") || (x == "l") = (-1, 0)
+    | otherwise = (0, 0)
+
+-- | Converts a Y coordinate to become relative to the bottom of the map
+yCoordinateToBottomRelative :: Int -- ^ The Y coordinate
+                            -> Int -- ^ The height of the map
+                            -> Int -- ^ The new, converted Y coordinate
+yCoordinateToBottomRelative yCoord mapHeight =  (mapHeight - 1) - yCoord
+
+-- | Converts a Y coordinate to become relative to the top of the map
+yCoordinateToTopRelative :: Int -- ^ The Y coordinate
+                         -> Int -- ^ The height of the map
+                         -> Int -- ^ The new, converted Y coordinate
+yCoordinateToTopRelative yCoord mapHeight = (mapHeight - 1) - yCoord
+
+-- Auxiliary functions
+
+-- | Checks if a list has only a certain set of items
+listHasOnly :: (Eq a)
+            => [a] -- ^ List to evaluate
+            -> [a] -- ^ List of items the list can contain
+            -> Bool
+listHasOnly [] [] = True
+listHasOnly [] _ = False
+listHasOnly list items = not (elem False (map aux list))
+    where
+        aux x = aux2 x items
+        aux2 x [] = False
+        aux2 x (y : ys)
+            | (x == y) = True
+            | (x /= y && null ys) = False
+            | otherwise = aux2 x ys
+
+-- | Returns the index at which a list of strings stops having a certain head character
+listHeadNot :: [String] -> Char -> Int
+listHeadNot [] _ = 0
+listHeadNot x char = aux x char 0
+    where
+        aux [] _ currentIndex = currentIndex
+        aux (x : xs) char currentIndex
+            | (length x < 1) = currentIndex
+            | (head x /= char) = currentIndex
+            | otherwise = aux xs char (currentIndex + 1)
+
+-- | Returns the index at which the first character of a line from a list of strings is a certain character or the length of the list if the character is not found
+listHeadIs :: [String] -> Char -> Int
+listHeadIs [] _ = 0
+listHeadIs x char = aux x char 0
+    where
+        aux [] _ currentIndex = currentIndex
+        aux (x : xs) char currentIndex
+            | (length x > 0 && head x == char) = currentIndex
+            | (null xs) = currentIndex + 1
+            | otherwise = aux xs char (currentIndex + 1)
+
+-- | Had to create my own version of elemIndex that returns an Int all the time instead of a stupid maybe int that just makes code bloated. I hate haskell (shh).
+-- Returns index at which an element is found in a list or \-1 if the element isn't found
+myElemIndex :: (Eq a) => a -> [a] -> Int
+myElemIndex x list = aux x list 0
+    where
+        aux _ [] _ = -1
+        aux x (y : ys) index
+            | x == y = index
+            | otherwise = aux x ys (index + 1)
+
+-- | Checks if a coordinate is in the right format (number, space, number) e.g. "12 24"
+validateCoordinateFormat :: String -> Bool
+validateCoordinateFormat line
+    | length spaces /= 1 = False
+    | length other > 0 = False
+    | (myElemIndex ' ' line == 0) || (myElemIndex ' ' line == ((length line) - 1)) = False
+    | length coordinates > 2 = False
+    | otherwise = True
+    where
+        spaces = filter (== ' ') line
+        other = filter (\x -> not (isDigit x) && not (x == ' ')) line
+        coordinates = splitOn [' '] line
+
+-- | Returns the number of ocurrences of a given element on a list of lists
+howManyTimes :: (Eq a) => a -> [[a]] -> Int
+howManyTimes x [] = 0
+howManyTimes x (y : ys) = (aux x y) + howManyTimes x ys
+    where
+        aux :: (Eq a) => a -> [a] -> Int
+        aux x [] = 0
+        aux x (y : ys)
+            | x == y = 1 + aux x ys
+            | otherwise = aux x ys
+
+-- | Checks the coordinates present in a list of coordinate lines are all different, and if not, returns the index of the first repeating coordinate
+noRepeatedCoordinates :: [String] -> Int
+noRepeatedCoordinates list = aux list 0 []
+    where
+        aux [] _ _ = -1
+        aux (x : xs) index checkedCoordinates
+            | (elem x checkedCoordinates || not (validateCoordinateFormat x)) = index
+            | otherwise = aux xs (index + 1) (checkedCoordinates ++ [x])
+
+-- | Returns the index at which the first string of a list is a coordinate or the list's length when a coordinate was not found
+listHeadIsCoordinate :: [String] -> Int
+listHeadIsCoordinate list = aux list 0
+    where
+        aux [] index = index
+        aux (x : xs) index
+            | validateCoordinateFormat x = index
+            | otherwise = aux xs (index + 1)

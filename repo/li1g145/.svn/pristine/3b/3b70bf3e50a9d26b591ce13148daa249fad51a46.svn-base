@@ -1,0 +1,6 @@
+Para correr o teste end2end:
+
+ - Abrir o ghci
+ - :l "path/to/tarefa4.hs"
+ - :l "e2e.hs"
+ - e2eTarefa4

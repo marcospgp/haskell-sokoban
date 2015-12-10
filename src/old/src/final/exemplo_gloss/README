@@ -1,0 +1,18 @@
+
+Utilização:
+
+Para experimentar o exemplo de gloss, compilar o programa Main.hs:
+
+$ ghc --make Main.hs
+
+e executar o respectivo executável:
+
+$ ./Main
+
+Documentação:
+
+A documentação do exemplo pode ser gerada com o comando:
+
+$ haddock -h Main.hs
+
+e visualizada no ficheiro Main.html gerado.

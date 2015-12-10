@@ -1,4 +1,10 @@
- Repositório do primeiro projeto de LI.
+ Repositório do primeiro projeto de LI (Haskell - Sokoban).
+
+    Para testar com o dev main:
+
+	:l sokoban.hs
+	main
+	../caminho/relativo/para/o/mapa.txt
 
  Na pasta doc deverá ser gerada a documentação Haddock do projeto.
 
