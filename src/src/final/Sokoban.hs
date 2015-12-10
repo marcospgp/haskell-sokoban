@@ -20,8 +20,6 @@ import Graphics.Gloss.Data.Picture -- To draw pictures
 import Graphics.Gloss.Interface.Pure.Game -- To react to events
 import Graphics.Gloss.Juicy -- Extra module to import images in formats other than bitmap
 
-import Audio -- Our custom audio library (from stack overflow)
-
 -- The World type, used to hold the game state
 -- Note: All Y coordinates used in the code are relative to the top of the map (except they're converted to gloss coordinates by the render function)
 data World = World {
@@ -165,9 +163,10 @@ drawBoxes world boxSprite placedBoxSprite
     | otherwise = (Translate displayX displayY spriteToUse) : (drawBoxes (world {boxPos = xs}) boxSprite placedBoxSprite)
         where
             (x : xs) = boxPos world
+            map = mapLines world
             boxX = x !! 0
             boxY = x !! 1
-            charAtBoxPosition = (mapLines !! boxY) !! boxX
+            charAtBoxPosition = (map !! boxY) !! boxX
             isBoxPlaced = if (charAtBoxPosition == '.') then True else False
             spriteToUse = if (isBoxPlaced) then placedBoxSprite else boxSprite
             [displayX, displayY] = coordinatesToGloss [(spriteWidth * (fromIntegral boxX)), (spriteHeight * (fromIntegral boxY))]
